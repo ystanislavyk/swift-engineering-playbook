@@ -1,0 +1,105 @@
+// swiftlint:disable all
+
+{%- macro extractRequiredProtocolConformance type -%}
+    {% if type.based.Sendable %}, @unchecked Sendable{% endif %}
+{%- endmacro %}
+
+{%- macro correctOptionalAny typeName -%}
+    {{ typeName|replace:"any (\w+)\?","(any $1)?","regex" }}
+{%- endmacro %}
+
+{%- macro correctMethodParameterTypeName typeName -%}
+    {% set rawType -%}
+    {{ typeName | replace:"@escaping ", "" }}
+    {%- endset -%}
+
+    {% set correctedType -%}
+    {% call correctOptionalAny rawType %}
+    {%- endset -%}
+
+    {{ correctedType }}
+{%- endmacro %}
+
+{% macro mockedMethodEntityName method nameEnding %}
+    {%- if method.annotations.mockFuncName -%}
+        {{ method.annotations.mockFuncName }}{{ nameEnding }}
+    {%- else -%}
+        {{ method.shortName }}{{ nameEnding }}
+    {%- endif %}
+{%- endmacro %}
+
+{%- for import in argument.import %}
+import {{ import }}
+{%- endfor %}
+
+{%- for import in argument.testable-import %}
+@testable import {{ import }}
+{%- endfor %}
+
+{% for type in types.protocols where type.name != "AutoMockable" and type|annotated:"AutoMockable" %}
+
+final class {{ type.name|replace:"Protocol", "" }}Mock: {{ type.name }}{% call extractRequiredProtocolConformance type %} {
+    {% for variable in type.allVariables -%}
+        @MockedProperty var {{ variable.name }}: {{ variable.typeName }}
+    {% endfor %}
+
+    {% for method in type.allMethods %}
+    {% set methodInput -%}
+    {% if method.annotations.mockFuncName -%}
+        {{ method.annotations.mockFuncName|upperFirstLetter }}
+    {%- else -%}
+        {{ method.shortName|upperFirstLetter }}
+    {%- endif -%}
+    Input
+    {%- endset %}
+
+    {%- set mockedMethod %}
+    {%- call mockedMethodEntityName method "MockedMethod" %}
+    {%- endset %}
+
+    {%- set mockedMethodInteractor %}
+    {%- call mockedMethodEntityName method "MockedMethodInteractor" %}
+    {%- endset %}
+
+    {%- set mockedMethodCall -%}
+    call
+    {%- if not method.returnTypeName.isVoid -%}
+        AndReturn
+    {%- endif -%}
+    {{ 'Throwable' if method.throws }}(
+    {%- if method.returnTypeName.isVoid -%}with: {% endif %}
+    {%- endset %}
+
+    {% if method.parameters.count >= 2 %}
+    typealias {{ methodInput }} = (
+    {% for parameter in method.parameters %}
+        {{ parameter.name }}: {% call correctMethodParameterTypeName parameter.typeName %}{% if not forloop.last %},{% endif %}
+    {% endfor %}
+    )
+    {% endif %}
+    private(set) lazy var {{ mockedMethod }} = {{ mockedMethodInteractor }}.mockedMethod
+    private let {{ mockedMethodInteractor }} = MockedMethodInteractor<
+        {%- if method.parameters.count == 0 -%}
+            ()
+        {%- elif method.parameters.count == 1 -%}
+            {% call correctMethodParameterTypeName method.parameters.first.typeName %}
+        {%- else -%}
+            {{ methodInput }}
+        {%- endif -%}
+        {% if method.returnTypeName.isVoid -%}
+            , ()
+        {%- else -%}
+            , {% call correctMethodParameterTypeName method.returnTypeName %}
+        {%- endif -%}
+        >()
+    {% for name, attribute in method.attributes -%}
+        {% for value in attribute -%}
+            {{ value }}
+        {%- endfor %}
+    {%- endfor %}
+    func {% call correctOptionalAny method.name %}{{ ' async' if method.isAsync }}{{ ' throws' if method.throws }}{% if not method.returnTypeName.isVoid %} -> {% call correctOptionalAny method.returnTypeName %}{% endif %} {
+        {{ 'try ' if method.throws }}{{ mockedMethodInteractor }}.{{ mockedMethodCall. }}({% for parameter in method.parameters %}{{ parameter.name }}{% if not forloop.last %}, {% endif %}{% endfor %}))
+    }
+    {% endfor %}
+}
+{% endfor %}
