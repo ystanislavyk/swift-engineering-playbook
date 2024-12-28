@@ -1,0 +1,57 @@
+// swiftlint:disable all
+
+{# The type check order is important: Annotation -> Optional -> Container -> Kind -> Everything else in alphabetic order #}
+{% macro variableDefaultValue variable -%}
+{%- if variable.annotations.sampleDefaultValue -%}
+    {{ variable.annotations.sampleDefaultValue }}
+{%- elif variable.isOptional -%}
+    nil
+{%- elif variable.isArray -%}
+    []
+{%- elif variable.isDictionary -%}
+    [:]
+{%- elif variable.typeName.name|contains:"Set" -%}
+    []
+{%- elif variable.type.kind == "struct" or variable.type.kind == "class" -%}
+    .sample()
+{%- elif variable.typeName.name == "Data" -%}
+    {{ variable.typeName.name }}()
+{%- elif variable.typeName.name == "Date" -%}
+    {{ variable.typeName.name }}()
+{%- elif variable.typeName.name == "Bool" -%}
+    false
+{%- elif variable.typeName.name == "String" -%}
+    "{{ variable.name }}"
+{%- elif variable.typeName.name == "URL" -%}
+    URL(string: "swift.org")!
+{%- elif variable.typeName.name == "UUID" -%}
+    {{ variable.typeName.name }}()
+{%- else -%}
+    0
+{%- endif -%}
+{% endmacro -%}
+
+{%- for import in argument.import %}
+import {{ import }}
+{%- endfor %}
+
+{%- for import in argument.testable-import %}
+@testable import {{ import }}
+{%- endfor %}
+
+{% for type in types.all where type.name != "AutoSample" and type|annotated:"AutoSample" %}
+extension {{ type.name }} {
+    static func sample(
+    {% for variable in type.storedVariables %}
+        {{ variable.name }}: {{ variable.actualTypeName }} = {% call variableDefaultValue variable %}{% if not forloop.last %},{% endif %}
+    {% endfor %}
+    ) -> Self {
+        Self(
+        {% for variable in type.storedVariables %}
+            {{ variable.name }}: {{ variable.name }}{% if not forloop.last %},{% endif %}
+        {% endfor %}
+        )
+    }
+}
+
+{% endfor %}

@@ -1,0 +1,21 @@
+configurations:
+    - sources:
+        - Tests/MockingUtilsTests/SampleProtocol.swift
+        - Tests/MockingUtilsTests/SampleSendableProtocol.swift
+      templates:
+        - ../../Tools/Sourcery/Templates/AutoMockable.stencil
+      output: Tests/MockingUtilsTests/AutoMockable.generated.swift
+      args:
+        import:
+          - Foundation
+          - MockingUtils
+        # testable-import:
+        #   - MockingUtils
+    - sources:
+        - Tests/MockingUtilsTests/SampleModel.swift
+      templates:
+        - ../../Tools/Sourcery/Templates/AutoSample.stencil
+      output: Tests/MockingUtilsTests/AutoSample.generated.swift
+      args:
+        import:
+          - Foundation
